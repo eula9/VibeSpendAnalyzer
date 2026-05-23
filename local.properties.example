@@ -1,0 +1,3 @@
+# Copy to local.properties and set your Android SDK path.
+# AI API keys are configured inside the app (Settings screen), NOT here.
+sdk.dir=C\:\\Users\\YOUR_USERNAME\\AppData\\Local\\Android\\Sdk
