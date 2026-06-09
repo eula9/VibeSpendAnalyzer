@@ -94,7 +94,7 @@ SQLite 本地库             用户自填 API Key / URL / Model
 ### 1. 克隆仓库
 
 ```bash
-git clone https://github.com/<你的用户名>/VibeSpendAnalyzer.git
+git clone https://github.com/eula9/VibeSpendAnalyzer.git
 cd VibeSpendAnalyzer
 ```
 
