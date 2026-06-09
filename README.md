@@ -1,91 +1,126 @@
-# AI 消费分析助手 (VibeSpendAnalyzer)
+# VibeSpendAnalyzer · AI 消费分析助手
 
-一款面向个人理财场景的 **Android 原生应用**：用「消费日历」一眼掌握支出节奏，用 **大模型** 对每一笔消费做幽默又理性的点评，并用 **Room 数据库** 让账单在重启后依然完整保留。
+一款 Android 原生个人记账应用：用**消费日历**掌握支出节奏，用大模型为每笔消费生成幽默又理性的点评，并用 **Room** 在本地持久化全部账单。
 
-> 本项目面向技术展示与开源协作，**源码中不包含任何个人 API Key**，所有 AI 凭证均由终端用户在 App 内自行配置。
-
----
-
-## 核心功能
-
-### 专属消费日历看板（首页）
-
-- 以 **月历网格** 展示每日消费汇总，热力色深浅反映当日支出高低
-- 顶部展示 **本月总支出** 与记账笔数
-- 点击任意日期进入 **当日明细**，支持查看与删除单笔记录
-- 右下角 **FAB「+」** 快速进入智能记账
-
-### 持久化历史账单
-
-- 全部消费记录写入 **Room 本地数据库**（`vibe_spend.db`）
-- **历史记录页** 按时间倒序展示金额、内容、时间与 AI 诊断全文
-- **进程结束或重启 App 后数据不丢失**
-
-### 动态 AI 模型配置面板
-
-- 独立 **「AI 设置」** 页面（日历页右上角齿轮进入）
-- 用户可自行填写并本地保存：
-  - **API Key**（支持密码隐藏 / 显示切换）
-  - **API 基础 URL**（默认 `https://api.deepseek.com/v1`，兼容 OpenAI 格式，可接 DeepSeek、Kimi 等）
-  - **模型名称**（默认 `deepseek-chat`）
-- 未配置 Key 时，记账分析会 **拦截网络请求** 并提示前往设置页配置
-
-### 智能记账与分析
-
-- 输入消费金额与内容，一键 **「记账并让 AI 分析」**
-- 基于 **OpenAI 兼容 Chat Completions** 接口生成 100 字以内消费点评
-- 分析成功后自动写入数据库，并清空输入框便于连续记账
+> 源码中**不包含任何 API Key**。AI 凭证由用户在 App 内自行配置，仅存于设备本地。
 
 ---
 
-## 技术栈亮点
+## 目录
 
-| 领域 | 技术选型 | 说明 |
-|------|----------|------|
-| 语言 | **Kotlin** | 全项目 Kotlin 实现 |
-| UI | **Jetpack Compose** | 声明式 UI、Material 3、统一 Vibe 视觉体系 |
-| 导航 | **Navigation Compose** | 日历 / 记账 / 历史 / 设置 / 日明细多页面栈 |
-| 持久化 | **Room + KSP** | `@Entity` / `Dao` / `AppDatabase`，编译期生成实现 |
-| 异步 | **Kotlin Coroutines** | 网络请求、数据库写入在 IO 线程执行 |
-| 响应式 | **Kotlin Flow** | `getAllRecords(): Flow<List<ExpenseRecord>>` |
-| UI 绑定 | **collectAsState** | 日历、历史等页面随数据库变化 **自动刷新** |
-| 网络 | **OkHttp** | 轻量 HTTPS 客户端，适配自定义 Base URL |
-| 配置存储 | **SharedPreferences** | AI 凭证与业务数据隔离存储 |
+- [功能概览](#功能概览)
+- [应用导航](#应用导航)
+- [技术栈](#技术栈)
+- [架构设计](#架构设计)
+- [隐私与安全](#隐私与安全)
+- [环境要求](#环境要求)
+- [快速开始](#快速开始)
+- [项目结构](#项目结构)
+- [参与贡献](#参与贡献)
+- [许可证](#许可证)
 
-### 架构要点（简述）
+---
+
+## 功能概览
+
+| 模块 | 说明 |
+|------|------|
+| **消费日历** | 月历网格展示每日支出汇总，热力色深浅反映当日支出高低；顶部显示本月总支出与记账笔数 |
+| **当日明细** | 点击任意日期查看该日全部记录，支持删除单笔账单 |
+| **智能记账** | 输入金额与消费内容，调用 OpenAI 兼容接口生成 ≤100 字 AI 点评，成功后自动入库 |
+| **历史账单** | 按时间倒序展示金额、内容、时间与 AI 诊断全文；重启 App 后数据不丢失 |
+| **AI 设置** | 独立配置页，填写 API Key、Base URL、模型名；未配置 Key 时拦截网络请求并提示 |
+
+**默认 AI 配置**
+
+| 项 | 默认值 |
+|----|--------|
+| Base URL | `https://api.deepseek.com/v1` |
+| 模型 | `deepseek-chat` |
+
+兼容所有 OpenAI Chat Completions 格式的服务（DeepSeek、Kimi 等），Base URL 支持多种写法，会自动补全 `/v1/chat/completions` 路径。
+
+---
+
+## 应用导航
 
 ```
-UI (Compose)
-    ↓ collectAsState / suspend
-ExpenseRepositoryProvider / AiSettingsStore
-    ↓
-Room (ExpenseDao)          SharedPreferences (AiSettings)
-    ↓
-SQLite 本地库             用户自填 API Key / URL / Model
+消费日历（首页）
+├── 右上角齿轮 → AI 设置
+├── 点击日期   → 当日明细
+└── 右下角 +   → 智能记账
+                    └── 历史账单
+```
+
+```mermaid
+flowchart LR
+    CALENDAR[消费日历] -->|齿轮| SETTINGS[AI 设置]
+    CALENDAR -->|点击日期| DAY[当日明细]
+    CALENDAR -->|FAB +| RECORD[智能记账]
+    RECORD --> HISTORY[历史账单]
 ```
 
 ---
 
-## 隐私与安全设计
+## 技术栈
 
-本项目 **完全遵循安全开源规范**：
+| 类别 | 选型 |
+|------|------|
+| 语言 | Kotlin 2.2 |
+| UI | Jetpack Compose · Material 3 |
+| 导航 | Navigation Compose |
+| 持久化 | Room 2.7 + KSP |
+| 异步 | Kotlin Coroutines |
+| 响应式 | Flow + `collectAsState` |
+| 网络 | OkHttp 4 |
+| 配置存储 | SharedPreferences |
 
-- **不硬编码** 任何 API Key、Token 或私有 Base URL
-- **不在** `build.gradle.kts`、`local.properties` 或 `BuildConfig` 中注入密钥
-- 所有 AI 接口凭证均由用户在 App 端 **「AI 设置」** 页输入
-- 凭证仅存于设备本地 **`SharedPreferences`（`ai_settings`）**，不上传、不进入版本库
-- `.gitignore` 已排除 `local.properties`、`build/`、`secrets.properties` 等敏感或生成目录
+**SDK 版本**：minSdk 24 · targetSdk 36 · compileSdk 36
 
-> **建议**：若你曾在旧版本将 Key 写入配置文件，请在服务商控制台 **轮换密钥** 后再使用新 Key。
+---
+
+## 架构设计
+
+```
+┌─────────────────────────────────────────┐
+│           UI Layer (Compose)            │
+│  Calendar · Record · History · Settings │
+└─────────────────┬───────────────────────┘
+                  │ collectAsState / suspend
+┌─────────────────▼───────────────────────┐
+│   ExpenseRepository · AiSettingsStore   │
+└────────┬──────────────────┬─────────────┘
+         │                  │
+┌────────▼────────┐  ┌──────▼──────────────┐
+│  Room / SQLite  │  │ SharedPreferences   │
+│  vibe_spend.db  │  │ ai_settings (Key…)  │
+└─────────────────┘  └─────────────────────┘
+```
+
+- **数据层**：`ExpenseRepository` 封装 Room CRUD；`ExpenseAnalytics` 负责日历聚合统计
+- **AI 层**：`AiChatClient` 封装 OpenAI 兼容 HTTP 请求，与业务数据存储完全隔离
+- **UI 层**：各 Screen 通过 Flow 订阅数据库变化，无需手动刷新
+
+---
+
+## 隐私与安全
+
+| 原则 | 做法 |
+|------|------|
+| 零硬编码密钥 | 不在源码、`build.gradle.kts`、`BuildConfig` 或 `local.properties` 中注入 API Key |
+| 本地存储 | 凭证仅存于设备 `SharedPreferences`（`ai_settings`），不上传、不进版本库 |
+| 版本库隔离 | `.gitignore` 已排除 `local.properties`、`secrets.properties`、`build/` 等 |
+
+若曾在旧版本将 Key 写入配置文件，请在服务商控制台**轮换密钥**后再使用新 Key。
 
 ---
 
 ## 环境要求
 
-- Android Studio（推荐最新稳定版）
-- JDK 17+（与 Android Gradle Plugin 9.x 配套）
-- Android SDK：**minSdk 24**，**targetSdk 36**
-- 可连接互联网的设备或模拟器（调用 AI 接口时）
+- [Android Studio](https://developer.android.com/studio)（推荐最新稳定版）
+- JDK 17+（Android Gradle Plugin 9.x 要求）
+- Android SDK（API 36）
+- 可联网的真机或模拟器（调用 AI 接口时需要）
 
 ---
 
@@ -98,59 +133,84 @@ git clone https://github.com/eula9/VibeSpendAnalyzer.git
 cd VibeSpendAnalyzer
 ```
 
-### 2. 配置本地 SDK 路径
+### 2. 配置 SDK 路径
 
-复制示例文件并修改为你的 SDK 路径：
+复制示例文件并填入本机 Android SDK 路径：
 
-```bash
-# Windows 示例：复制 local.properties.example 为 local.properties
+```powershell
+# Windows
+copy local.properties.example local.properties
 ```
 
-`local.properties` **仅用于** 指定 `sdk.dir`，**不要** 在此填写 API Key。
+```bash
+# macOS / Linux
+cp local.properties.example local.properties
+```
+
+编辑 `local.properties`，仅设置 `sdk.dir`。**不要在此文件填写 API Key。**
 
 ### 3. 编译运行
 
-1. 用 Android Studio 打开项目  
-2. **Sync Project with Gradle Files**  
-3. 连接真机或模拟器，点击 **Run**  
+**方式 A — Android Studio**
 
-### 4. 配置 AI（首次使用必做）
+1. 打开项目 → **Sync Project with Gradle Files**
+2. 连接真机或启动模拟器 → 点击 **Run**
 
-1. 打开 App，进入首页 **消费日历**  
-2. 点击右上角 **设置（齿轮）**  
-3. 填写你的 **API Key**、**Base URL**、**模型名** → **保存设置**  
-4. 点击 **+** 进入记账页，即可体验 AI 分析  
+**方式 B — 命令行**
+
+```bash
+# Windows
+.\gradlew.bat installDebug
+
+# macOS / Linux
+./gradlew installDebug
+```
+
+### 4. 配置 AI（首次使用）
+
+1. 打开 App，进入首页**消费日历**
+2. 点击右上角**设置（齿轮）**
+3. 填写 **API Key**、**Base URL**、**模型名** → **保存设置**
+4. 点击 **+** 进入记账页，输入消费并体验 AI 分析
 
 ---
 
-## 项目结构（主要源码）
+## 项目结构
 
 ```
 app/src/main/java/com/example/vibespendanalyzer/
-├── MainActivity.kt                 # 初始化 AiSettings / Room
-├── AiChatClient.kt                 # OpenAI 兼容 HTTP 客户端
+├── MainActivity.kt              # 入口，初始化 Room 与 AI 设置
+├── AiChatClient.kt              # OpenAI 兼容 HTTP 客户端
 ├── data/
-│   ├── AiSettings*.kt              # SharedPreferences 配置
-│   ├── ExpenseRepository.kt        # 消费记录仓库
-│   ├── ExpenseAnalytics.kt         # 日历聚合统计
+│   ├── AiSettings.kt            # 配置数据模型
+│   ├── AiSettingsStore.kt       # SharedPreferences 读写
+│   ├── AiSettingsRepository.kt
+│   ├── ExpenseRepository.kt     # 消费记录仓库
+│   ├── ExpenseAnalytics.kt      # 日历聚合统计
 │   └── local/
-│       ├── ExpenseRecord.kt        # Room @Entity
+│       ├── ExpenseRecord.kt     # Room @Entity
 │       ├── ExpenseDao.kt
 │       └── AppDatabase.kt
-├── navigation/AppNavigation.kt     # 导航图
+├── navigation/
+│   └── AppNavigation.kt         # 路由与 NavHost
 └── ui/
-    ├── SpendingCalendarScreen.kt   # 消费日历（首页）
-    ├── HomeScreen.kt               # 智能记账
-    ├── HistoryScreen.kt            # 历史账单
-    ├── AiSettingsScreen.kt         # AI 设置
-    └── DayDetailScreen.kt          # 当日明细
+    ├── VibeStyles.kt            # 统一视觉主题
+    ├── SpendingCalendarScreen.kt
+    ├── HomeScreen.kt            # 智能记账
+    ├── HistoryScreen.kt
+    ├── AiSettingsScreen.kt
+    ├── DayDetailScreen.kt
+    ├── ExpenseItemCard.kt
+    └── calendar/
+        ├── CalendarModels.kt
+        └── CalendarUtils.kt
 ```
 
 ---
 
-## 开源与协作
+## 参与贡献
 
-欢迎 Issue / PR。提交代码前请确认：
+欢迎提交 Issue 与 Pull Request。提交前请确认：
 
 - [ ] 未包含个人 API Key 或 `local.properties`
 - [ ] 未提交 `app/build/` 等构建产物
@@ -160,8 +220,8 @@ app/src/main/java/com/example/vibespendanalyzer/
 
 ## 许可证
 
-本项目以学习与技术展示为目的开源；AI 服务的使用须遵守对应服务商条款。
+本项目以学习与技术展示为目的开源。使用 AI 服务须遵守对应服务商的使用条款。
 
 ---
 
-**AI 消费分析助手** — 让每一笔消费，都花得明明白白。
+**VibeSpendAnalyzer** — 让每一笔消费，都花得明明白白。
